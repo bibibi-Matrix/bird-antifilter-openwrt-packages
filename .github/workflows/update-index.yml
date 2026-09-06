@@ -5,84 +5,46 @@ on:
     branches: [ "main" ]
     paths:
       - "packages/**/*.apk"
+      - ".github/workflows/update-index.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   reindex:
-    name: reindex-${{ matrix.sdk }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - sdk: x86_64-openwrt-25.12
-            arch: x86_64
-          - sdk: mediatek-filogic-openwrt-25.12
-            arch: aarch64_cortex-a53
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Regenerate apk index in SDK container
-        run: |
-          CONTAINER_NAME=reindex-${{ strategy.job-index }}
-          docker run --privileged --name $CONTAINER_NAME \
-            -v "$PWD":/work:ro \
-            -w /builder \
-            docker.io/openwrt/sdk:${{ matrix.sdk }} \
-            bash -c '
-              set -e
-              [ -d ./scripts ] || ./setup.sh
-              mkdir -p /feed
-              echo "src-link bird /feed" >> feeds.conf.default
-              ./scripts/feeds update bird
-              make defconfig >/dev/null
-              mkdir -p bin/packages/${{ matrix.arch }}/bird
-              cp /work/packages/${{ matrix.arch }}/bird/*.apk bin/packages/${{ matrix.arch }}/bird/
-              make package/index
-              echo "=== index files ==="
-              ls -la bin/packages/${{ matrix.arch }}/bird/
-            '
-          mkdir -p out
-          docker cp $CONTAINER_NAME:/builder/bin/packages/${{ matrix.arch }}/bird/packages.adb out/packages.adb
-          docker cp $CONTAINER_NAME:/builder/bin/packages/${{ matrix.arch }}/bird/index.json out/index.json
-          docker rm -f $CONTAINER_NAME
-          cp out/packages.adb packages/${{ matrix.arch }}/bird/packages.adb
-          cp out/index.json packages/${{ matrix.arch }}/bird/index.json
-
-      - name: Upload index
-        uses: actions/upload-artifact@v4
-        with:
-          name: index-${{ matrix.sdk }}
-          path: packages/${{ matrix.arch }}/bird/
-          if-no-files-found: error
-
-  commit:
-    name: commit-index
-    needs: reindex
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.actor != 'github-actions[bot]')
+    name: reindex-and-commit
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download indexes
-        uses: actions/download-artifact@v4
-        with:
-          path: dl
-
-      - name: Install regenerated indexes
+      - name: Regenerate apk indexes with apk-tools-static
         run: |
-          cp "$PWD/dl/index-x86_64-openwrt-25.12/packages.adb" packages/x86_64/bird/packages.adb
-          cp "$PWD/dl/index-x86_64-openwrt-25.12/index.json" packages/x86_64/bird/index.json
-          cp "$PWD/dl/index-mediatek-filogic-openwrt-25.12/packages.adb" packages/aarch64_cortex-a53/bird/packages.adb
-          cp "$PWD/dl/index-mediatek-filogic-openwrt-25.12/index.json" packages/aarch64_cortex-a53/bird/index.json
+          docker run --rm -w /w -v "$PWD":/w alpine:3.22 sh -c '
+            set -eu
+            apk add --no-cache apk-tools-static python3 >/dev/null
+            echo "apk.static version:"
+            /sbin/apk.static --version 2>&1 || true
+            for d in packages/x86_64/bird packages/aarch64_cortex-a53/bird; do
+              arch=$(basename "$(dirname "$d")")
+              echo "==> $d (arch=$arch)"
+              cd "/w/$d"
+              /sbin/apk.static mkndx --allow-untrusted --output packages.adb *.apk
+              /sbin/apk.static adbdump --format json packages.adb > /w/out-${arch}.json
+              python3 /w/tools/make-index-json.py -a "$arch" -f apk /w/out-${arch}.json > index.json
+              echo "packages.adb: $(stat -c %s packages.adb) bytes"
+              echo "index.json packages:"
+              python3 -c "import json;print(json.load(open(\"index.json\"))[\"packages\"])"
+            done
+          '
 
-      - name: Commit and push
+      - name: Commit and push rebuilt indexes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages
+          git add packages/x86_64/bird/packages.adb packages/x86_64/bird/index.json \
+                  packages/aarch64_cortex-a53/bird/packages.adb packages/aarch64_cortex-a53/bird/index.json
           if git diff --cached --quiet; then
             echo "no index changes"
           else
