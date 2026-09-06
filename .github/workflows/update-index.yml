@@ -51,7 +51,7 @@ jobs:
             chmod 600 /tmp/key-build
             for d in packages/x86_64/bird packages/aarch64_cortex-a53/bird; do
               echo "==> signing $d/packages.adb"
-              /sbin/apk.static adbsign --sign-key /tmp/key-build "/w/$d/packages.adb"
+              /sbin/apk.static adbsign --allow-untrusted --sign-key /tmp/key-build "/w/$d/packages.adb"
             done
           '
 
