@@ -27,7 +27,8 @@
 
 Каждая папка пакетов содержит `*.apk`, `index.json` и `packages.adb`. Индексы
 пересоздаются автоматически GitHub Actions (workflow `update-index.yml`) при
-изменении `.apk`: `apk mkndx` → `packages.adb` и
+изменении `.apk`: `apk mkndx` → `packages.adb`, подпись ключом фида через
+`apk adbsign --sign-key` (EC P-256, `bird-feed.pem`) и
 `apk adbdump --format json | tools/make-index-json.py` → `index.json`
 (та же логика, что и `make package/index` в SDK OpenWrt).
 
@@ -51,25 +52,32 @@ apk add --allow-untrusted /tmp/feed.apk
 https://raw.githubusercontent.com/bibibi-Matrix/bird-antifilter-openwrt-packages/main/packages/<ARCH>/bird/packages.adb
 ```
 
-где `<ARCH>` — `x86_64` или `aarch64_cortex-a53`. Затем:
+где `<ARCH>` — `x86_64` или `aarch64_cortex-a53`.
+
+Установите ключ фида (однократно), чтобы индекс проверялся автоматически:
 
 ```sh
-apk update --allow-untrusted
-apk add --allow-untrusted bird luci-app-bird kmod-amneziawg amneziawg-tools luci-proto-amneziawg
+wget -O /etc/apk/keys/bird-feed.pem https://raw.githubusercontent.com/bibibi-Matrix/bird-antifilter-openwrt-packages/main/bird-feed.pem
+```
+
+Затем обычные команды **без** флагов:
+
+```sh
+apk update
+apk add bird luci-app-bird kmod-amneziawg amneziawg-tools luci-proto-amneziawg
 ```
 
 Русская локализация (опционально):
 
 ```sh
-apk add --allow-untrusted luci-i18n-amneziawg-ru
+apk add luci-i18n-amneziawg-ru
 ```
 
 После обновления пакетов из этого фида обновление до новой версии:
 
 ```sh
-apk update --allow-untrusted && apk upgrade --allow-untrusted
+apk update && apk upgrade
 ```
 
-> Пакеты и индекс не подписаны ключом фида, поэтому требуется `--allow-untrusted`
-> (для постоянной настройки замените `--allow-untrusted` на установку публичного
-> ключа фида в `/etc/apk/keys/`).
+> Если ключ фида не устанавливать, индексы будут считаться непроверенными,
+> и потребуется флаг `--allow-untrusted`, например `apk update --allow-untrusted`.
