@@ -26,7 +26,7 @@ jobs:
       - name: Regenerate apk index in SDK container
         run: |
           CONTAINER_NAME=reindex-${{ strategy.job-index }}
-          docker run --name $CONTAINER_NAME \
+          docker run --privileged --name $CONTAINER_NAME \
             -v "$PWD":/work:ro \
             -w /builder \
             docker.io/openwrt/sdk:${{ matrix.sdk }} \
