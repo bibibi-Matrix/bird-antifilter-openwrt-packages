@@ -40,7 +40,7 @@ jobs:
           '
 
       - name: Sign packages.adb with feed key
-        if: ${{ secrets.FEED_SIGN_KEY != '' }}
+        if: ${{ env.FEED_SIGN_KEY != '' }}
         env:
           FEED_SIGN_KEY: ${{ secrets.FEED_SIGN_KEY }}
         run: |
