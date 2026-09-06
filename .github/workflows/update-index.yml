@@ -1,0 +1,91 @@
+name: Update feed index
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "packages/**/*.apk"
+  workflow_dispatch:
+
+jobs:
+  reindex:
+    name: reindex-${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: x86_64-openwrt-25.12
+            arch: x86_64
+          - sdk: mediatek-filogic-openwrt-25.12
+            arch: aarch64_cortex-a53
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Regenerate apk index in SDK container
+        run: |
+          CONTAINER_NAME=reindex-${{ strategy.job-index }}
+          docker run --name $CONTAINER_NAME \
+            -v "$PWD":/work:ro \
+            -w /builder \
+            docker.io/openwrt/sdk:${{ matrix.sdk }} \
+            bash -c '
+              set -e
+              [ -d ./scripts ] || ./setup.sh
+              mkdir -p /feed
+              echo "src-link bird /feed" >> feeds.conf.default
+              ./scripts/feeds update bird
+              make defconfig >/dev/null
+              mkdir -p bin/packages/${{ matrix.arch }}/bird
+              cp /work/packages/${{ matrix.arch }}/bird/*.apk bin/packages/${{ matrix.arch }}/bird/
+              make package/index
+              echo "=== index files ==="
+              ls -la bin/packages/${{ matrix.arch }}/bird/
+            '
+          mkdir -p out
+          docker cp $CONTAINER_NAME:/builder/bin/packages/${{ matrix.arch }}/bird/packages.adb out/packages.adb
+          docker cp $CONTAINER_NAME:/builder/bin/packages/${{ matrix.arch }}/bird/index.json out/index.json
+          docker rm -f $CONTAINER_NAME
+          cp out/packages.adb packages/${{ matrix.arch }}/bird/packages.adb
+          cp out/index.json packages/${{ matrix.arch }}/bird/index.json
+
+      - name: Upload index
+        uses: actions/upload-artifact@v4
+        with:
+          name: index-${{ matrix.sdk }}
+          path: packages/${{ matrix.arch }}/bird/
+          if-no-files-found: error
+
+  commit:
+    name: commit-index
+    needs: reindex
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.actor != 'github-actions[bot]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download indexes
+        uses: actions/download-artifact@v4
+        with:
+          path: dl
+
+      - name: Install regenerated indexes
+        run: |
+          cp "$PWD/dl/index-x86_64-openwrt-25.12/packages.adb" packages/x86_64/bird/packages.adb
+          cp "$PWD/dl/index-x86_64-openwrt-25.12/index.json" packages/x86_64/bird/index.json
+          cp "$PWD/dl/index-mediatek-filogic-openwrt-25.12/packages.adb" packages/aarch64_cortex-a53/bird/packages.adb
+          cp "$PWD/dl/index-mediatek-filogic-openwrt-25.12/index.json" packages/aarch64_cortex-a53/bird/index.json
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages
+          if git diff --cached --quiet; then
+            echo "no index changes"
+          else
+            git commit -m "reindex feed (packages.adb/index.json)"
+            git push
+          fi
