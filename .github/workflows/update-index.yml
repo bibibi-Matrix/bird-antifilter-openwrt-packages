@@ -21,7 +21,7 @@ jobs:
 
       - name: Regenerate apk indexes with apk-tools-static
         run: |
-          docker run --rm -w /w -v "$PWD":/w alpine:3.22 sh -c '
+          docker run --rm -w /w -v "$PWD":/w alpine:3.23 sh -c '
             set -eu
             apk add --no-cache apk-tools-static python3 >/dev/null
             echo "apk.static version:"
@@ -30,7 +30,7 @@ jobs:
               arch=$(basename "$(dirname "$d")")
               echo "==> $d (arch=$arch)"
               cd "/w/$d"
-              /sbin/apk.static mkndx --allow-untrusted --output packages.adb *.apk
+              /sbin/apk.static mkndx --root /w --keys-dir /w --allow-untrusted --output packages.adb *.apk
               /sbin/apk.static adbdump --format json packages.adb > /w/out-${arch}.json
               python3 /w/tools/make-index-json.py -a "$arch" -f apk /w/out-${arch}.json > index.json
               echo "packages.adb: $(stat -c %s packages.adb) bytes"
