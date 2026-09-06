@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "architecture": "x86_64",
+  "packages": {
+    "bird": "1.2-r1",
+    "luci-app-bird": "1.0.1-r1"
+  }
+}
