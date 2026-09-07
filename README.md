@@ -39,7 +39,7 @@
 В одном из вариантов:
 
 ```sh
-wget -O /tmp/feed.apk https://raw.githubusercontent.com/bibibi-Matrix/bird-antifilter-openwrt-packages/main/packages/<ARCH>/bird/bird-1.2-r1.apk
+wget -O /tmp/feed.apk https://raw.githubusercontent.com/bibibi-Matrix/bird-antifilter-openwrt-packages/main/packages/<ARCH>/bird/bird-1.2-r2.apk
 apk add --allow-untrusted /tmp/feed.apk
 ```
 
